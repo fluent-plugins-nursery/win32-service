@@ -72,6 +72,7 @@ module Win32
 
     # Wraps SetServiceStatus.
     SetTheServiceStatus = Proc.new do |dwCurrentState, dwWin32ExitCode, dwCheckPoint, dwWaitHint|
+      File.open("/test/log/SetTheServiceStatus.log", 'a') { |f| f.puts "#{Time.now.inspect}, SetTheServiceStatus called with dwCurrentState: #{dwCurrentState}" }
       ss = SERVICE_STATUS.new # Current status of the service.
 
       # Disable control requests until the service is started.
@@ -95,6 +96,7 @@ module Win32
 
       # Send status of the service to the Service Controller.
       unless SetServiceStatus(@@ssh, ss)
+        File.open("/test/log/SetTheServiceStatus.log", 'a') { |f| f.puts "#{Time.now.inspect}, SetTheServiceStatus SetEvent hStopEvent" }
         SetEvent(@@hStopEvent)
       end
     end
@@ -103,6 +105,7 @@ module Win32
 
     # Handles control signals from the service control manager.
     Service_Ctrl_ex = Proc.new do |dwCtrlCode, dwEventType, lpEventData, lpContext|
+      File.open("/test/log/Service_Ctrl_ex.log", 'a') { |f| f.puts "#{Time.now.inspect}, Service_Ctrl_ex called with dwCtrlCode: #{dwCtrlCode}" }
       @@waiting_control_code = dwCtrlCode
       return_value = NO_ERROR
 
@@ -129,7 +132,9 @@ module Win32
 
         # Tell service_main thread to stop.
         if dwCtrlCode == SERVICE_CONTROL_STOP || dwCtrlCode == SERVICE_CONTROL_SHUTDOWN
+          File.open("/test/log/Service_Ctrl_ex.log", 'a') { |f| f.puts "#{Time.now.inspect}, Service_Ctrl_ex SetEvent hStopEvent" }
           if SetEvent(@@hStopEvent) == 0
+            File.open("/test/log/Service_Ctrl_ex.log", 'a') { |f| f.puts "#{Time.now.inspect}, Service_Ctrl_ex SetTheServiceStatus SERVICE_STOPPED" }
             SetTheServiceStatus.call(SERVICE_STOPPED, FFI.errno, 0, 0)
           end
         end
@@ -173,14 +178,19 @@ module Win32
 
         SetEvent(@@hStartEvent)
 
+        File.open("/test/log/Service_Main.log", 'a') { |f| f.puts "#{Time.now.inspect}, Service_Main wait hStopEvent" }
+
         # Main loop for the service.
         while WaitForSingleObject(@@hStopEvent, 1000) != WAIT_OBJECT_0
         end
+
+        File.open("/test/log/Service_Main.log", 'a') { |f| f.puts "#{Time.now.inspect}, Service_Main wait hStopCompletedEvent" }
 
         # Main loop for the service.
         while WaitForSingleObject(@@hStopCompletedEvent, 1000) != WAIT_OBJECT_0
         end
       ensure
+        File.open("/test/log/Service_Main.log", 'a') { |f| f.puts "#{Time.now.inspect}, Service_Main SetTheServiceStatus SERVICE_STOPPED" }
         # Stop the service.
         SetTheServiceStatus.call(SERVICE_STOPPED, NO_ERROR, 0, 0)
       end
@@ -263,6 +273,7 @@ module Win32
       thr = Thread.new do
         begin
           while WaitForSingleObject(@@hStopEvent, 1000) == WAIT_TIMEOUT
+            File.open("/test/log/command_receiver_thread.log", 'a') { |f| f.puts "#{Time.now.inspect}, command_receiver_thread while loop" }
             # Check to see if anything interesting has been signaled
             case @@waiting_control_code
               when SERVICE_CONTROL_PAUSE
@@ -295,8 +306,11 @@ module Win32
             @@waiting_control_code = IDLE_CONTROL_CODE
           end
 
+          File.open("/test/log/command_receiver_thread.log", 'a') { |f| f.puts "#{Time.now.inspect}, command_receiver_thread while break" }
+
           service_stop if respond_to?("service_stop")
         ensure
+          File.open("/test/log/command_receiver_thread.log", 'a') { |f| f.puts "#{Time.now.inspect}, command_receiver_thread SetEvent hStopCompletedEvent" }
           SetEvent(@@hStopCompletedEvent)
         end
       end
