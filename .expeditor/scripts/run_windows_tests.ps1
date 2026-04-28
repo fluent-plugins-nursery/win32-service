@@ -28,7 +28,7 @@ Write-Output "--- Bundle install"
 
 bundle config --local path vendor/bundle
 bundle lock --add-platform x64-mingw-ucrt
-bundle install --jobs=7 --retry=3
+bundle install --jobs=7 --retry=3 --without debug
 if (-not $?) { throw "bundle install failed" }
 
 Write-Output "--- Running Cookstyle"
